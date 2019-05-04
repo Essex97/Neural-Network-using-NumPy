@@ -1,6 +1,24 @@
-import logging
 import numpy as np
 import pickle
+
+
+# Used for cifar 10
+def unpickle(file):
+    with open(file, 'rb') as fo:
+        dictionary = pickle.load(fo, encoding='bytes')
+    return dictionary
+
+
+# Calculate the output of the hidden Layer
+def calculate_z(x, w, func_id):
+    a = np.dot(x, w.transpose())
+    z = activation(func_id, a)
+
+    # Append a column with aces at the start, bias
+    z_0 = np.ones((z.shape[0], 1))
+    z = np.append(z_0, z, axis=1)
+
+    return z
 
 
 # Compute the softmax function of the output
@@ -12,10 +30,42 @@ def softmax(y):
     return y / (np.array([np.sum(y, 1), ] * y.shape[1])).T
 
 
-def cost_function(w1, w2, X, t, lamda):
+def activation(func_id, a):
+
+    if func_id == 0:
+        # np.log(1 + np.exp(a)) causes overflows
+        activation_result = np.log(1 + np.exp(-np.abs(a))) + np.maximum(a, 0)
+
+    elif func_id == 1:
+        # (np.exp(a) - np.exp(-a)) / (np.exp(a) + np.exp(-a)) causes overflows
+        activation_result = np.tanh(a)
+
+    else:
+        activation_result = np.cos(a)
+
+    return activation_result
+
+
+def derivative_activation(func_id, a):
+
+    if func_id == 0:
+        # np.exp(a) / np.log(1 + np.exp(a)) causes overflows
+        derivative_activation_result = np.exp(np.minimum(0, a)) / (1 + np.exp(- np.abs(a)))
+
+    elif func_id == 1:
+        # 1 - (np.exp(a) - np.exp(-a)) ** 2 / (np.exp(a) + np.exp(-a)) ** 2 causes overflows
+        derivative_activation_result = 1 - np.power(np.tanh(a), 2)
+
+    else:
+        derivative_activation_result = -(np.sin(a))
+
+    return derivative_activation_result
+
+
+def cost_function(w1, w2, x, t, lamda, func_id):
 
     # Hidden layer
-    Z = calculate_z(X, w1)
+    Z = calculate_z(x, w1, func_id)
 
     softmax_input = np.dot(Z, np.transpose(w2))
 
@@ -25,7 +75,7 @@ def cost_function(w1, w2, X, t, lamda):
     max_error = np.max(softmax_input, axis=1)
 
     # Compute the cost function to check convergence
-    # Using the logsumexp trick for numerical stability - lec8.pdf slide 43
+    # Using the log_sum_exp trick for numerical stability - lec8.pdf slide 43
     Ew = np.sum(t * softmax_input) - np.sum(max_error) - \
         np.sum(np.log(np.sum(np.exp(softmax_input - np.array([max_error, ] * softmax_input.shape[1]).T), 1))) - \
         (0.5 * lamda) * (np.sum(np.square(w1)) + np.sum(np.square(w2)))
@@ -37,26 +87,14 @@ def cost_function(w1, w2, X, t, lamda):
     w2_copy = np.copy(w2[:, 1:])
 
     # calculate gradient of w_1
-    step_1 = derivative_activation(np.dot(X, np.transpose(w1)))
+    step_1 = derivative_activation(func_id, np.dot(x, np.transpose(w1)))
     step_2 = np.dot(t-Y, w2_copy) * step_1
-    w1_grad = np.dot(np.transpose(step_2), X) - lamda*w1
+    w1_grad = np.dot(np.transpose(step_2), x) - lamda*w1
 
     return Ew, w1_grad, w2_grad
 
 
-# Calculate the output of the hidden Layer
-def calculate_z(x, w):
-    a = np.dot(x, w.transpose())
-    z = activation(a)
-
-    # Append a column with aces at the start, bias
-    z_0 = np.ones((z.shape[0], 1))
-    z = np.append(z_0, z, axis=1)
-
-    return z
-
-
-def train(w1, w2, x_train, y_train, lr, epochs, batch_size, N, lambda_val):
+def train(w1, w2, x_train, y_train, lr, train_epochs, train_bs, lambda_val, func_id):
 
     print('Start Training...')
 
@@ -64,11 +102,12 @@ def train(w1, w2, x_train, y_train, lr, epochs, batch_size, N, lambda_val):
     x0_train = np.ones((x_train.shape[0], 1))
     x_train = np.append(x0_train, x_train, axis=1)
 
-    lr = lr / batch_size
+    # The learning rate needs to be relevant to the batch size
+    lr = lr / train_bs
 
-    for i in range(epochs):
+    for i in range(train_epochs):
 
-        # zip the feature and the labels to order them in the same order
+        # zip the feature and the labels in order to shuffle them in the same order
         zipped = list(zip(x_train, y_train))
         # shuffle them in order to avoid meeting the same examples on the same batches
         np.random.shuffle(zipped)
@@ -78,28 +117,30 @@ def train(w1, w2, x_train, y_train, lr, epochs, batch_size, N, lambda_val):
         y_train = np.array(y_train)
 
         # j --> Index of the first element on the batch
-        for j in range(0, N, batch_size):
-            subset_x = x_train[j: j+batch_size, :]
-            subset_y = y_train[j: j+batch_size, :]
+        for j in range(0, x_train.shape[0], train_bs):
+            subset_x = x_train[j: j+train_bs, :]
+            subset_y = y_train[j: j+train_bs, :]
 
             # Compute the cost
-            cost, w1_gradient, w2_gradient = cost_function(w1=w1, w2=w2, X=subset_x, t=subset_y, lamda=lambda_val)
+            cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2,
+                                                   x=subset_x, t=subset_y,
+                                                   lamda=lambda_val, func_id=func_id)
 
             # Update the weights
-            w1 = w1 + lr * w1_gradient
-            w2 = w2 + lr * w2_gradient
+            w1 = w1 + lr * w1_grad
+            w2 = w2 + lr * w2_grad
 
     return w1, w2
 
 
-def predict(w1, w2, x_test, y_test):
+def predict(w1, w2, x_test, y_test, func_id):
 
     # Add the bias on test data
     x0_test = np.ones((x_test.shape[0], 1))
     x_test = np.append(x0_test, x_test, axis=1)
 
     # Hidden layer
-    Z = calculate_z(x_test, w1)
+    Z = calculate_z(x_test, w1, func_id)
 
     softmax_input = np.dot(Z, np.transpose(w2))
 
@@ -119,24 +160,24 @@ def predict(w1, w2, x_test, y_test):
     return accuracy, FAULTS
 
 
-def grad_check(w1_init, w2_init, X, t, lamda_val):
-    w1 = np.random.rand(*w1_init.shape)
-    w2 = np.random.rand(*w2_init.shape)
+def grad_check(w1_initial, w2_initial, x, t, lambda_val, func_id):
+    w1 = np.random.rand(*w1_initial.shape)
+    w2 = np.random.rand(*w2_initial.shape)
     epsilon = 1e-6
 
-    x0 = np.ones((X.shape[0], 1))
-    X = np.append(x0, X, axis=1)
+    x0 = np.ones((x.shape[0], 1))
+    x = np.append(x0, x, axis=1)
 
-    _list = np.random.randint(X.shape[0], size=5)
-    x_sample = np.array(X[_list, :])
+    _list = np.random.randint(x.shape[0], size=5)
+    x_sample = np.array(x[_list, :])
     t_sample = np.array(t[_list, :])
 
-    cost, w1_gradient, w2_gradient = cost_function(w1=w1, w2=w2, X=x_sample, t=t_sample, lamda=lamda_val)
+    cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2, x=x_sample, t=t_sample, lamda=lambda_val, func_id=func_id)
 
     print("w1_gradient shape: {} \nw1_shape : {} \nw2_gradient shape: {} \nw2_shape : {} \n".format(
-        w1_gradient.shape, w1.shape, w2_gradient.shape, w2.shape))
+        w1_grad.shape, w1.shape, w2_grad.shape, w2.shape))
 
-    numericalGrad = np.zeros(w1_gradient.shape)
+    numericalGrad = np.zeros(w1_grad.shape)
     # Compute all numerical gradient estimates and store them in
     # the matrix numericalGrad
     for k in range(numericalGrad.shape[0]):
@@ -144,20 +185,20 @@ def grad_check(w1_init, w2_init, X, t, lamda_val):
             # add epsilon to the w[k,d]
             w_tmp = np.copy(w1)
             w_tmp[k, d] += epsilon
-            e_plus, _, _ = cost_function(w_tmp, w2, x_sample, t_sample, lamda_val)
+            e_plus, _, _ = cost_function(w_tmp, w2, x_sample, t_sample, lambda_val, func_id)
 
             # subtract epsilon to the w[k,d]
             w_tmp = np.copy(w1)
             w_tmp[k, d] -= epsilon
-            e_minus, _, _ = cost_function(w_tmp, w2, x_sample, t_sample, lamda_val)
+            e_minus, _, _ = cost_function(w_tmp, w2, x_sample, t_sample, lambda_val, func_id)
 
             # approximate gradient ( E[ w[k,d] + theta ] - E[ w[k,d] - theta ] ) / 2*e
             numericalGrad[k, d] = (e_plus - e_minus) / (2 * epsilon)
 
     # Absolute norm
-    print("The difference estimate for gradient of w is : ", np.max(np.abs(w1_gradient - numericalGrad)))
+    print("The difference estimate for gradient of w1 is : ", np.max(np.abs(w1_grad - numericalGrad)))
 
-    numericalGrad = np.zeros(w2_gradient.shape)
+    numericalGrad = np.zeros(w2_grad.shape)
     # Compute all numerical gradient estimates and store them in
     # the matrix numericalGrad
     for k in range(numericalGrad.shape[0]):
@@ -165,18 +206,18 @@ def grad_check(w1_init, w2_init, X, t, lamda_val):
             # add epsilon to the w[k,d]
             w_tmp = np.copy(w2)
             w_tmp[k, d] += epsilon
-            e_plus, _, _ = cost_function(w1, w_tmp, x_sample, t_sample, lamda_val)
+            e_plus, _, _ = cost_function(w1, w_tmp, x_sample, t_sample, lambda_val, func_id)
 
             # subtract epsilon to the w[k,d]
             w_tmp = np.copy(w2)
             w_tmp[k, d] -= epsilon
-            e_minus, _, _ = cost_function(w1, w_tmp, x_sample, t_sample, lamda_val)
+            e_minus, _, _ = cost_function(w1, w_tmp, x_sample, t_sample, lambda_val, func_id)
 
             # approximate gradient ( E[ w[k,d] + theta ] - E[ w[k,d] - theta ] ) / 2*e
             numericalGrad[k, d] = (e_plus - e_minus) / (2 * epsilon)
 
     # Absolute norm
-    print("The difference estimate for gradient of w is : ", np.max(np.abs(w2_gradient - numericalGrad)))
+    print("The difference estimate for gradient of w2 is : ", np.max(np.abs(w2_grad - numericalGrad)))
 
 
 def load_data_set(mode):
@@ -218,89 +259,8 @@ def load_data_set(mode):
             label = test_batch['labels'.encode('ascii', 'ignore')][j]
             y_test.append([1 if k == label else 0 for k in range(0, 10)])
 
-    print('They were loaded')
+    print('They were loaded\n')
     return np.array(x_train), np.array(y_train), np.array(x_test), np.array(y_test)
-
-
-# Used for cifar 10
-def unpickle(file):
-    with open(file, 'rb') as fo:
-        dictionary = pickle.load(fo, encoding='bytes')
-    return dictionary
-
-
-def setup_logger(logger_name, log_file, level=logging.INFO):
-    l = logging.getLogger(logger_name)
-    formatter = logging.Formatter('%(message)s')
-    fileHandler = logging.FileHandler(log_file, mode='w')
-    fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
-
-    l.setLevel(level)
-    l.addHandler(fileHandler)
-    l.addHandler(streamHandler)
-
-
-def optimize():
-    for data_id in [0, 1]:
-
-        if data_id == 1:
-            train_x, train_y, test_x, test_y = load_data_set(mode=1)
-            data_name = 'CIFAR 10'
-        else:
-            train_x, train_y, test_x, test_y = load_data_set(mode=0)
-            data_name = 'MNIST'
-
-        N = train_x.shape[0]  # Number of examples
-        D = train_x.shape[1]  # Number of features
-
-        for func_id in [0, 1, 2]:
-            for lr in [0.01, 0.001]:
-                for M in [100, 200, 300]:
-                    for epochs in [20]:
-                        for lambda_val in [0.01, 0.1]:
-
-                            global activation
-                            global derivative_activation
-
-                            if func_id == 0:
-                                # np.log(1 + np.exp(a)) causes overflows
-                                activation = lambda a: np.log(1 + np.exp(-np.abs(a))) + np.maximum(a, 0)
-                                # np.exp(a) / np.log(1 + np.exp(a)) causes overflows
-                                derivative_activation = lambda a: np.exp(np.minimum(0, a))/(1 + np.exp(- np.abs(a)))
-                                act_name = 'log(1 + exp(a))'
-                            elif func_id == 1:
-                                # (np.exp(a) - np.exp(-a)) / (np.exp(a) + np.exp(-a)) causes overflows
-                                activation = lambda a: np.tanh(a)
-                                # 1 - (np.exp(a) - np.exp(-a)) ** 2 / (np.exp(a) + np.exp(-a)) ** 2 causes overflows
-                                derivative_activation = lambda a: 1 - np.power(np.tanh(a), 2)
-                                act_name = 'tanh'
-                            else:
-                                activation = lambda a: np.cos(a)
-                                derivative_activation = lambda a: -(np.sin(a))
-                                act_name = 'cos(a)'
-
-                            center = 0
-                            s = 1 / np.sqrt(D + 1)
-
-                            w1_init = np.random.normal(center, s, (M, D + 1))
-                            w2_init = np.zeros((10, M + 1))
-
-                            w1_init[:, 0] = 1
-                            w2_init[:, 0] = 1
-
-                            w_1, w_2 = train(w1_init, w2_init, train_x, train_y, lr, epochs, 100, N, lambda_val)
-
-                            accuracy, faults = predict(w1=w_1, w2=w_2, x_test=test_x, y_test=test_y)
-
-                            x0_test = np.ones((test_x.shape[0], 1))
-                            temp_test_x = np.append(x0_test, test_x, axis=1)
-                            loss, _, _ = cost_function(w_1, w_2, temp_test_x, test_y, lambda_val)
-
-                            LOGGER.info('DATASET={:<8}  AF={:<15}  HU={:<3}  LR ={:<4}  BS=100  EPOCHS={}  λ ={:<4} --> '
-                                        'ACCURACY = {}%  FAULTS = {}/{}  LOSS ={}'.format(
-                                data_name, act_name, M, lr, epochs, lambda_val, accuracy, faults, test_x.shape[0], loss))
 
 
 if __name__ == '__main__':
@@ -312,20 +272,6 @@ if __name__ == '__main__':
                         "1  | tanh \n"
                         "2  | cos(a) \n"
                         "Your choice: ")
-
-    if function_id == 0:
-        # np.log(1 + np.exp(a)) causes overflows
-        activation = lambda a: np.log(1 + np.exp(-np.abs(a))) + np.maximum(a, 0)
-        # np.exp(a) / np.log(1 + np.exp(a)) causes overflows
-        derivative_activation = lambda a: np.exp(np.minimum(0, a)) / (1 + np.exp(- np.abs(a)))
-    elif function_id == 1:
-        # (np.exp(a) - np.exp(-a)) / (np.exp(a) + np.exp(-a)) causes overflows
-        activation = lambda a: np.tanh(a)
-        # 1 - (np.exp(a) - np.exp(-a)) ** 2 / (np.exp(a) + np.exp(-a)) ** 2 causes overflows
-        derivative_activation = lambda a: 1 - np.power(np.tanh(a), 2)
-    else:
-        activation = lambda a: np.cos(a)
-        derivative_activation = lambda a: -(np.sin(a))
 
     learning_rate = input("\nEnter the learning rate (default=0.01): ")
     try:
@@ -347,9 +293,8 @@ if __name__ == '__main__':
 
     K = 10  # Categories
     M = 200  # Neurons
-    epochs = 2  # training epochs
+    epochs = 20  # training epochs
     batch_size = 100  # batch size
-    N = train_x.shape[0]  # Number of examples
     D = train_x.shape[1]  # Number of features
 
     print('Train x: {} Test x: {}'.format(train_x.shape, test_x.shape))
@@ -365,14 +310,8 @@ if __name__ == '__main__':
     w1_init[:, 0] = 1
     w2_init[:, 0] = 1
 
-    # grad_check(w1_init, w2_init, train_x, train_y, 0.01)
+    # grad_check(w1_init, w2_init, train_x, train_y, 0.01, function_id)
 
-    w_1, w_2 = train(w1_init, w2_init, train_x, train_y, learning_rate, epochs, batch_size, N, lambda_val=0.01)
+    w_1, w_2 = train(w1_init, w2_init, train_x, train_y, learning_rate, epochs, batch_size, 0.1, function_id)
 
-    _, _ = predict(w1=w_1, w2=w_2, x_test=test_x, y_test=test_y)
-
-    # Used to find the best parameters of our model
-    setup_logger(logger_name='LOGGER', log_file='log_info.txt', level=logging.INFO)
-    global LOGGER
-    LOGGER = logging.getLogger('LOGGER')
-    # optimize()
+    _, _ = predict(w1=w_1, w2=w_2, x_test=test_x, y_test=test_y, func_id=function_id)
