@@ -144,10 +144,7 @@ def predict(w1, w2, x_test, y_test, func_id):
     x0_test = np.ones((x_test.shape[0], 1))
     x_test = np.append(x0_test, x_test, axis=1)
 
-    Z, softmax_input, Y = feed_forward(w1, w2, x_test, func_id)
-
-    # Output(soft max) layer returns probabilities
-    pred = softmax(softmax_input)
+    Z, softmax_input, pred = feed_forward(w1, w2, x_test, func_id)
 
     pred = np.argmax(pred, 1)
     real = np.argmax(y_test, 1)
