@@ -126,7 +126,7 @@ def train(w1, w2, x_train, y_train, lr, train_epochs, train_bs, lambda_val, func
             subset_x = x_train[j: j+train_bs, :]
             subset_y = y_train[j: j+train_bs, :]
 
-            # Compute the cost
+            # Compute the cost and the grads of the weights
             cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2,
                                                    x=subset_x, t=subset_y,
                                                    lamda=lambda_val, func_id=func_id)
