@@ -75,7 +75,6 @@ def cost_function(w1, w2, x, t, lamda, func_id):
     max_error = np.max(softmax_input, axis=1)
 
     # Compute the cost function to check convergence
-    # Using the log_sum_exp trick for numerical stability - lec8.pdf slide 43
     Ew = np.sum(t * softmax_input) - np.sum(max_error) - \
         np.sum(np.log(np.sum(np.exp(softmax_input - np.array([max_error, ] * softmax_input.shape[1]).T), 1))) - \
         (0.5 * lamda) * (np.sum(np.square(w1)) + np.sum(np.square(w2)))
@@ -306,7 +305,7 @@ if __name__ == '__main__':
     w1_init = np.random.normal(center, s, (M, D + 1))
     w2_init = np.zeros((K, M + 1))
 
-    # Ad an ace for the zero degree element of the logistic regression function : f(x)=1+ax+bx^2...
+    # Add an ace for the zero degree element of the logistic regression function : f(x)=1+ax+bx^2...
     w1_init[:, 0] = 1
     w2_init[:, 0] = 1
 
