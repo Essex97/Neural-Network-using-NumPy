@@ -30,6 +30,18 @@ def softmax(y):
     return y / (np.array([np.sum(y, 1), ] * y.shape[1])).T
 
 
+def feed_forward(w1, w2, x, func_id):
+    # Hidden layer
+    Z = calculate_z(x, w1, func_id)
+
+    softmax_input = np.dot(Z, np.transpose(w2))
+
+    # Output(soft max) layer returns probabilities
+    Y = softmax(softmax_input)
+
+    return Z, softmax_input, Y
+
+
 def activation(func_id, a):
 
     if func_id == 0:
@@ -64,10 +76,7 @@ def derivative_activation(func_id, a):
 
 def cost_function(w1, w2, x, t, lamda, func_id):
 
-    # Hidden layer
-    Z = calculate_z(x, w1, func_id)
-
-    softmax_input = np.dot(Z, np.transpose(w2))
+    Z, softmax_input, Y = feed_forward(w1, w2, x, func_id)
 
     # Output(soft max) layer returns probabilities
     Y = softmax(softmax_input)
@@ -138,10 +147,7 @@ def predict(w1, w2, x_test, y_test, func_id):
     x0_test = np.ones((x_test.shape[0], 1))
     x_test = np.append(x0_test, x_test, axis=1)
 
-    # Hidden layer
-    Z = calculate_z(x_test, w1, func_id)
-
-    softmax_input = np.dot(Z, np.transpose(w2))
+    Z, softmax_input, Y = feed_forward(w1, w2, x_test, func_id)
 
     # Output(soft max) layer returns probabilities
     pred = softmax(softmax_input)
