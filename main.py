@@ -78,9 +78,6 @@ def cost_function(w1, w2, x, t, lamda, func_id):
 
     Z, softmax_input, Y = feed_forward(w1, w2, x, func_id)
 
-    # Output(soft max) layer returns probabilities
-    Y = softmax(softmax_input)
-
     max_error = np.max(softmax_input, axis=1)
 
     # Compute the cost function to check convergence
