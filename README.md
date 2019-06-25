@@ -1,4 +1,4 @@
-## How to update the gradients of our model
+## How to calculate the gradients of our model
 ---
 
 The cost function (logLikelihood plus reguralization term) we want to maximize:
