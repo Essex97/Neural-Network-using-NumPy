@@ -2,17 +2,27 @@ import numpy as np
 import pickle
 
 
-# Used for cifar 10
 def unpickle(file):
+    """
+    Used on loading cifar 10
+    :param file: The path where the dataset located
+    :return: A dictionary containing the dataset
+    """
     with open(file, 'rb') as fo:
         dictionary = pickle.load(fo, encoding='bytes')
     return dictionary
 
 
-# Calculate the output of the hidden Layer
 def calculate_z(x, w, func_id):
+    """
+    Calculate the output of the hidden Layer
+    :param x: Table N x d which contains our data. N: The number of data that will pass, d: Their dimension
+    :param w: Table that contains the weights of the hidden layer
+    :param func_id: The id of the function we chose to be as activation
+    :return: A table that contains the output of the layer after passing it from the activation
+    """
     a = np.dot(x, w.transpose())
-    z = activation(func_id, a)
+    z = activation(func_id=func_id, a=a)
 
     # Append a column with aces at the start, bias
     z_0 = np.ones((z.shape[0], 1))
@@ -21,8 +31,12 @@ def calculate_z(x, w, func_id):
     return z
 
 
-# Compute the softmax function of the output
 def softmax(y):
+    """
+    Compute the softmax function of the output
+    :param y: The output of out model
+    :return: The probability distribution
+    """
     max_of_rows = np.max(y, 1)
     m = np.array([max_of_rows, ] * y.shape[1]).T
     y = y - m
@@ -31,18 +45,35 @@ def softmax(y):
 
 
 def feed_forward(w1, w2, x, func_id):
+    """
+    Performs a feed forward in out network
+    :param w1: The weights of the Hidden Layer
+    :param w2: The weights of the Output Layer
+    :param x: Table N x d which contains our data. N: The number of data that will pass, d: Their dimension
+    :param func_id: The id of the function we chose to be as activation
+    :return:
+    The output of the hidden Layer: z
+    The output of the network before passing it through the softmax: softmax_input
+    The output of the network after passing it through the softmax: y
+    """
     # Hidden layer
-    Z = calculate_z(x, w1, func_id)
+    z = calculate_z(x, w1, func_id)
 
-    softmax_input = np.dot(Z, np.transpose(w2))
+    softmax_input = np.dot(z, np.transpose(w2))
 
     # Output(soft max) layer returns probabilities
-    Y = softmax(softmax_input)
+    y = softmax(softmax_input)
 
-    return Z, softmax_input, Y
+    return z, softmax_input, y
 
 
 def activation(func_id, a):
+    """
+    Execute the activation on our data
+    :param func_id: The id of the function we chose to be as activation
+    :param a: Out input that will pass through the activation
+    :return: The result of the activation
+    """
 
     if func_id == 0:
         # np.log(1 + np.exp(a)) causes overflows
@@ -59,6 +90,12 @@ def activation(func_id, a):
 
 
 def derivative_activation(func_id, a):
+    """
+    Execute the derivative of activation on our data
+    :param func_id: The id of the function we chose to be as activation
+    :param a: Out input that will pass through the derivative of activation
+    :return: The result of the derivative of activation
+    """
 
     if func_id == 0:
         # np.exp(a) / np.log(1 + np.exp(a)) causes overflows
@@ -74,32 +111,55 @@ def derivative_activation(func_id, a):
     return derivative_activation_result
 
 
-def cost_function(w1, w2, x, t, lamda, func_id):
+def cost_function(w1, w2, x, t, lambda_val, func_id):
+    """
+    Compute the cost
+    :param w1: The weights of the Hidden Layer
+    :param w2: The weights of the Output Layer
+    :param x:  Table N x d which contains our data. N: The number of data that will pass, d: Their dimension
+    :param t: The real values
+    :param lambda_val: The value of lambda (regularization term)
+    :param func_id: The id of the function we chose to be as activation
+    :return: The cost and the gradients of the wights
+    """
 
-    Z, softmax_input, Y = feed_forward(w1, w2, x, func_id)
+    z, softmax_input, y = feed_forward(w1, w2, x, func_id)
 
     max_error = np.max(softmax_input, axis=1)
 
     # Compute the cost function to check convergence
-    Ew = np.sum(t * softmax_input) - np.sum(max_error) - \
-        np.sum(np.log(np.sum(np.exp(softmax_input - np.array([max_error, ] * softmax_input.shape[1]).T), 1))) - \
-        (0.5 * lamda) * (np.sum(np.square(w1)) + np.sum(np.square(w2)))
+    cost = np.sum(t * softmax_input) - np.sum(max_error) - np.sum(np.log(np.sum(
+        np.exp(softmax_input - np.array([max_error, ] * softmax_input.shape[1]).T), 1))) - \
+        (0.5 * lambda_val) * (np.sum(np.square(w1)) + np.sum(np.square(w2)))
 
     # calculate gradient of w_2
-    w2_grad = (t - Y).T.dot(Z) - lamda * w2
+    w2_grad = (t - y).T.dot(z) - lambda_val * w2
 
     # Remove the bias
     w2_copy = np.copy(w2[:, 1:])
 
     # calculate gradient of w_1
     step_1 = derivative_activation(func_id, np.dot(x, np.transpose(w1)))
-    step_2 = np.dot(t-Y, w2_copy) * step_1
-    w1_grad = np.dot(np.transpose(step_2), x) - lamda*w1
+    step_2 = np.dot(t-y, w2_copy) * step_1
+    w1_grad = np.dot(np.transpose(step_2), x) - lambda_val*w1
 
-    return Ew, w1_grad, w2_grad
+    return cost, w1_grad, w2_grad
 
 
 def train(w1, w2, x_train, y_train, lr, train_epochs, train_bs, lambda_val, func_id):
+    """
+    Perform the training process
+    :param w1: The weights of the Hidden Layer
+    :param w2: The weights of the Output Layer
+    :param x_train:  Table N x d which contains our training data. N: The number of data, d: Their dimension
+    :param y_train: Table N x d which contains our training labels
+    :param lr: The learning rate
+    :param train_epochs: The epochs
+    :param train_bs: The batch size
+    :param lambda_val: The value of lambda (regularization term)
+    :param func_id: The id of the function we chose to be as activation
+    :return: The trained weight of the network in order to use them for predictions
+    """
 
     print('Start Training...')
 
@@ -129,7 +189,7 @@ def train(w1, w2, x_train, y_train, lr, train_epochs, train_bs, lambda_val, func
             # Compute the cost and the grads of the weights
             cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2,
                                                    x=subset_x, t=subset_y,
-                                                   lamda=lambda_val, func_id=func_id)
+                                                   lambda_val=lambda_val, func_id=func_id)
 
             # Update the weights
             w1 = w1 + lr * w1_grad
@@ -139,27 +199,45 @@ def train(w1, w2, x_train, y_train, lr, train_epochs, train_bs, lambda_val, func
 
 
 def predict(w1, w2, x_test, y_test, func_id):
+    """
+    Performs a complete feed forward on the network in order to make predictions
+    :param w1: The weights of the Hidden Layer
+    :param w2: The weights of the Output Layer
+    :param x_test:  Table N x d which contains our test data. N: The number of data, d: Their dimension
+    :param y_test: Table N x d which contains our test labels
+    :param func_id: The id of the function we chose to be as activation
+    :return: The accuracy of our model in the test data and the number of faults
+    """
 
     # Add the bias on test data
     x0_test = np.ones((x_test.shape[0], 1))
     x_test = np.append(x0_test, x_test, axis=1)
 
-    Z, softmax_input, pred = feed_forward(w1, w2, x_test, func_id)
+    _, _, pred = feed_forward(w1, w2, x_test, func_id)
 
     pred = np.argmax(pred, 1)
     real = np.argmax(y_test, 1)
 
-    TP = (pred == real).sum()
-    accuracy = np.round_(TP/x_test.shape[0], decimals=2) * 100
-    FAULTS = x_test.shape[0] - TP
+    true_positive = (pred == real).sum()
+    accuracy = np.round_(true_positive / x_test.shape[0], decimals=2) * 100
+    faults = x_test.shape[0] - true_positive
 
-    print('Faults = {}/{}'.format(FAULTS, real.shape[0]))
+    print('Faults = {}/{}'.format(faults, real.shape[0]))
     print('Accuracy = {}%'.format(accuracy))
 
-    return accuracy, FAULTS
+    return accuracy, faults
 
 
 def grad_check(w1_initial, w2_initial, x, t, lambda_val, func_id):
+    """
+    Performs a gradients check in order to be sure that our networks works fine
+    :param w1_initial: The initial weights of hidden Layer
+    :param w2_initial: The initial weights of output Layer
+    :param x: Our data
+    :param t: The corresponding labels
+    :param lambda_val: The value of lambda (regularization term)
+    :param func_id: The id of the function we chose to be as activation
+    """
     w1 = np.random.rand(*w1_initial.shape)
     w2 = np.random.rand(*w2_initial.shape)
     epsilon = 1e-6
@@ -171,16 +249,16 @@ def grad_check(w1_initial, w2_initial, x, t, lambda_val, func_id):
     x_sample = np.array(x[_list, :])
     t_sample = np.array(t[_list, :])
 
-    cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2, x=x_sample, t=t_sample, lamda=lambda_val, func_id=func_id)
+    cost, w1_grad, w2_grad = cost_function(w1=w1, w2=w2, x=x_sample, t=t_sample, lambda_val=lambda_val, func_id=func_id)
 
     print("w1_gradient shape: {} \nw1_shape : {} \nw2_gradient shape: {} \nw2_shape : {} \n".format(
         w1_grad.shape, w1.shape, w2_grad.shape, w2.shape))
 
-    numericalGrad = np.zeros(w1_grad.shape)
+    numerical_grad = np.zeros(w1_grad.shape)
     # Compute all numerical gradient estimates and store them in
-    # the matrix numericalGrad
-    for k in range(numericalGrad.shape[0]):
-        for d in range(numericalGrad.shape[1]):
+    # the matrix numerical_grad
+    for k in range(numerical_grad.shape[0]):
+        for d in range(numerical_grad.shape[1]):
             # add epsilon to the w[k,d]
             w_tmp = np.copy(w1)
             w_tmp[k, d] += epsilon
@@ -192,16 +270,16 @@ def grad_check(w1_initial, w2_initial, x, t, lambda_val, func_id):
             e_minus, _, _ = cost_function(w_tmp, w2, x_sample, t_sample, lambda_val, func_id)
 
             # approximate gradient ( E[ w[k,d] + theta ] - E[ w[k,d] - theta ] ) / 2*e
-            numericalGrad[k, d] = (e_plus - e_minus) / (2 * epsilon)
+            numerical_grad[k, d] = (e_plus - e_minus) / (2 * epsilon)
 
     # Absolute norm
-    print("The difference estimate for gradient of w1 is : ", np.max(np.abs(w1_grad - numericalGrad)))
+    print("The difference estimate for gradient of w1 is : ", np.max(np.abs(w1_grad - numerical_grad)))
 
-    numericalGrad = np.zeros(w2_grad.shape)
+    numerical_grad = np.zeros(w2_grad.shape)
     # Compute all numerical gradient estimates and store them in
-    # the matrix numericalGrad
-    for k in range(numericalGrad.shape[0]):
-        for d in range(numericalGrad.shape[1]):
+    # the matrix numerical_grad
+    for k in range(numerical_grad.shape[0]):
+        for d in range(numerical_grad.shape[1]):
             # add epsilon to the w[k,d]
             w_tmp = np.copy(w2)
             w_tmp[k, d] += epsilon
@@ -213,20 +291,25 @@ def grad_check(w1_initial, w2_initial, x, t, lambda_val, func_id):
             e_minus, _, _ = cost_function(w1, w_tmp, x_sample, t_sample, lambda_val, func_id)
 
             # approximate gradient ( E[ w[k,d] + theta ] - E[ w[k,d] - theta ] ) / 2*e
-            numericalGrad[k, d] = (e_plus - e_minus) / (2 * epsilon)
+            numerical_grad[k, d] = (e_plus - e_minus) / (2 * epsilon)
 
     # Absolute norm
-    print("The difference estimate for gradient of w2 is : ", np.max(np.abs(w2_grad - numericalGrad)))
+    print("The difference estimate for gradient of w2 is : ", np.max(np.abs(w2_grad - numerical_grad)))
 
 
-def load_data_set(mode):
+def load_data_set(set_id):
+    """
+    Loads the data sets
+    :param set_id: The id of the dataset you want to load 0 -> MNIST and 1-> CIFAR
+    :return:
+    """
     print("\nStart Loading, please wait!")
     x_train = []
     y_train = []
     x_test = []
     y_test = []
 
-    if mode == 0:
+    if set_id == 0:
         for i in range(10):
             with open('mnistdata/train{0:d}.txt'.format(i), 'r') as train_file:
                 for row in train_file:
@@ -242,7 +325,7 @@ def load_data_set(mode):
                     # one hot vector for the category
                     y_test.append([1 if j == i else 0 for j in range(0, 10)])
 
-    elif mode == 1:
+    elif set_id == 1:
         for i in range(5):
             train_file = 'cifar-10-batches-py/data_batch_{0:d}'.format(i+1)
             batch_i = unpickle(train_file)
@@ -286,13 +369,13 @@ if __name__ == '__main__':
                         "Your choice: ")
 
     if data_set_id == '1':
-        train_x, train_y, test_x, test_y = load_data_set(mode=1)
+        train_x, train_y, test_x, test_y = load_data_set(set_id=1)
     else:
-        train_x, train_y, test_x, test_y = load_data_set(mode=0)
+        train_x, train_y, test_x, test_y = load_data_set(set_id=0)
 
     K = 10  # Categories
-    M = 200  # Neurons
-    epochs = 20  # training epochs
+    M = 100  # Neurons
+    epochs = 10  # training epochs
     batch_size = 100  # batch size
     D = train_x.shape[1]  # Number of features
 
@@ -309,6 +392,7 @@ if __name__ == '__main__':
     w1_init[:, 0] = 1
     w2_init[:, 0] = 1
 
+    # If you want to perform grad check, uncomment this...
     # grad_check(w1_init, w2_init, train_x, train_y, 0.01, function_id)
 
     w_1, w_2 = train(w1_init, w2_init, train_x, train_y, learning_rate, epochs, batch_size, 0.1, function_id)
